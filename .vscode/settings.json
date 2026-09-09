@@ -1,10 +1,16 @@
 {
     "cSpell.words": [
         "dotenv",
+        "ipython",
+        "kernelspec",
         "langchain",
         "langchain_openai",
+        "nbconvert",
+        "nbformat",
         "OPENROUTER",
         "pycache",
+        "pydantic",
+        "pygments",
         "venv"
     ]
 }
