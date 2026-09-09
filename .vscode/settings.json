@@ -11,6 +11,7 @@
         "pycache",
         "pydantic",
         "pygments",
+        "toolkits",
         "venv"
     ]
 }
