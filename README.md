@@ -154,3 +154,93 @@ Langchain/ReACT/SalesDB/sales.db is educational sample data. A production SQL ag
 ## Scope
 
 The purpose of this repository is to develop sound intuition for agentic systems: explicit data contracts, composable transformations, controlled tools, stateful execution, bounded loops, and human oversight. The next evolution would be a tested Python package with reusable state models, configuration, tracing, durable storage, and evaluation cases.
+
+## Fundamentals glossary
+
+| Term | Definition | Why it matters in this project |
+| --- | --- | --- |
+| **LLM** | A large language model predicts the next tokens in a response from its instructions and context. | It creates drafts, classifications, task plans, summaries, and tool-call requests. |
+| **Temperature** | A sampling control: lower values generally make repeated answers more consistent; higher values allow more variation. | Most examples use `0` when predictable control flow matters and `0.7` for creative social-content examples. |
+| **Context** | The information supplied to a model for one request, including system instructions, user messages, tool results, and prompt variables. | State and message history determine what the model can use when a graph node invokes it. |
+| **Prompt** | Instructions and values given to a model. | Prompts define the task and desired behavior; templates prevent repeating the same instruction text. |
+| **Schema** | A formal description of expected data fields and value types. | Pydantic schemas constrain classifiers, evaluators, and task planners to predictable outputs. |
+| **State** | The evolving data object passed through a graph execution. | It is the source of truth for fields such as `topic`, `messages`, `tasks`, `results`, and `feedback`. |
+| **Node** | A named computation in a graph. | Nodes implement work such as generating a post, routing, evaluating a joke, or executing a tool. |
+| **Edge** | A permitted transition from one node to another. | Edges express the workflow instead of hiding its order inside a long function. |
+| **Reducer** | A merge rule for updates to one state field. | The messages example uses list addition so new messages accumulate safely. |
+| **Checkpoint** | A saved snapshot of graph state associated with an execution thread. | It makes pause-and-resume workflows, memory, and approval gates possible. |
+| **Tool call** | A structured request from a model to invoke a named external function. | It is the bridge between language reasoning and search, local data, or SQL capabilities. |
+| **Streaming** | Emitting intermediate tokens or graph updates while execution is still in progress. | The ReAct and orchestration notebooks expose intermediate progress for inspection or UI use. |
+
+## Workflow deep dives
+
+### Router: classify first, generate second
+
+The router solves one common agent-design problem: a request can have several
+valid specialized handlers. It first uses structured output to obtain both a
+clean topic and one permitted category. The `condition` function then maps the
+category to exactly one graph node. This design is important because the model
+does language interpretation while deterministic code owns control flow.
+
+~~~text
+user request -> decider node -> category in state -> conditional edge
+                                                    -> Instagram generator
+                                                    -> Twitter generator
+                                                    -> LinkedIn generator
+~~~
+
+If the model ever returns an unsupported category, the Python condition raises
+an error rather than silently selecting an arbitrary route. That is a useful
+example of making an AI workflow fail visibly at an invalid boundary.
+
+### Parallelization: one input, independent outputs
+
+The parallel graph gives all three content nodes the same `topic`, while each
+node writes to its own state field: `insta`, `twitter`, or `linkedin`. Because
+the fields do not conflict, the branches can complete independently. This is a
+good fan-out pattern for tasks that share an input but have no dependency on
+each other's output. When parallel nodes must write to the same field, define a
+reducer instead of relying on update order.
+
+### Generator-evaluator: feedback is state
+
+The generator-evaluator graph is an iterative refinement pattern. The
+generator creates a joke. The evaluator supplies a verdict and written
+feedback. Both are stored in state, so a rejected draft becomes explicit input
+to the next generation attempt. The loop stops when the evaluator marks the
+joke funny or when the iteration limit is reached. The limit is not optional:
+an LLM evaluator can remain dissatisfied indefinitely, so every self-correcting
+agent needs a termination condition.
+
+### Orchestrator-worker: planning is different from execution
+
+The orchestrator node turns one broad query into a list of worker prompts. The
+worker node maps the `execute` function over that list with a thread pool. The
+collector receives all results and synthesizes a summary. This separates three
+responsibilities that are often mixed together: deciding the work, doing the
+work, and communicating the combined result. In production, add timeouts,
+bounded worker counts, retries, and a result schema before trusting the final
+collector output.
+
+### ReAct: the message protocol behind an agent
+
+A manual ReAct graph makes the agent protocol visible. The LLM node receives
+the accumulated conversation and can return an `AIMessage` containing zero or
+more `tool_calls`. The tool node resolves each call by tool name, invokes it,
+and appends an associated `ToolMessage`. The next LLM invocation can then use
+those observations to answer or request more tools. A correct routing decision
+after the LLM node is therefore: continue to the tool node when the latest AI
+message has tool calls; otherwise end the graph.
+
+## Design principles demonstrated
+
+- Keep **probabilistic decisions** narrow with schemas, then use normal Python
+  for deterministic routing and validation.
+- Keep important information in **explicit state**, not in implicit notebook
+  variables or undocumented prompt text.
+- Treat tools as **capability boundaries**: give agents only the functions and
+  arguments they actually need.
+- Use loops only with **clear success criteria and hard limits**.
+- Add **human approval** before operations with real-world impact.
+- Prefer small, inspectable nodes over one large prompt that attempts to plan,
+  execute, validate, and summarize everything at once.
